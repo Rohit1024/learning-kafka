@@ -14,36 +14,31 @@ graph TD
 ---
 
 ## 1. Installation & Initialization
-To begin, initialize a Node project, install TypeScript, and get the platformatic library:
+To begin, initialize a Node project, install TypeScript, the platformatic library, and the high-performance concurrent work-pool utility `hwp` (for concurrent processing):
 
 ```bash
 npm init -y
 npm install typescript @types/node ts-node --save-dev
-npm install @platformatic/kafka
+npm install @platformatic/kafka hwp
 npx tsc --init
 ```
 
 ---
 
 ## 2. Creating the Producer
-Let's create `producer.ts` to connect to our local cluster and dispatch messages. We use keys to route orders to specific partitions.
+Let's create `producer.ts` to connect to our local cluster and dispatch messages. We use keys to route orders to specific partitions. We import the `Producer` class directly and configure it with `stringSerializers`.
 
 ```typescript
-import { Kafka } from '@platformatic/kafka';
+import { Producer, stringSerializers } from '@platformatic/kafka';
 
-// Initialize the central client manager
-const kafka = new Kafka({
-  brokers: ['localhost:9092'],
-  clientId: 'checkout-service'
+// Create a producer with string serializers
+const producer = new Producer({
+  clientId: 'checkout-service',
+  bootstrapBrokers: ['localhost:9092'],
+  serializers: stringSerializers
 });
 
-const producer = kafka.producer();
-
 async function runProducer() {
-  // Establish TCP connection to bootstrapping broker
-  await producer.connect();
-  console.log('Producer connected successfully');
-
   const orderPayload = {
     orderId: 'ORD-54321',
     customer: 'Jane Doe',
@@ -52,6 +47,7 @@ async function runProducer() {
   };
 
   try {
+    // Dispatch message with key to ensure same-key partition routing
     await producer.send({
       topic: 'orders-topic',
       messages: [
@@ -65,7 +61,8 @@ async function runProducer() {
   } catch (error) {
     console.error('Error dispatching message to Kafka:', error);
   } finally {
-    await producer.disconnect();
+    // Close the producer to release connections & resources
+    await producer.close();
   }
 }
 
@@ -75,40 +72,74 @@ runProducer().catch(console.error);
 ---
 
 ## 3. Creating the Consumer
-Now, let's build `consumer.ts`. The consumer will belong to a consumer group and handle messages sequentially within its worker loop.
+Now, let's build `consumer.ts`. In `@platformatic/kafka`, consumption is stream-based. We import the `Consumer` class directly and configure it with `stringDeserializers` so that message payloads are read as strings rather than raw byte buffers. 
+
+We can then consume the stream in three different ways:
+1. **Event-based** (using standard EventEmitter listener).
+2. **Async iterator** (sequentially iterating over messages).
+3. **Concurrent processing** (handling multiple messages in parallel using `hwp`'s `forEach`).
 
 ```typescript
-import { Kafka } from '@platformatic/kafka';
+import { Consumer, stringDeserializers } from '@platformatic/kafka';
+import { forEach } from 'hwp';
 
-const kafka = new Kafka({
-  brokers: ['localhost:9092'],
-  clientId: 'inventory-processor'
+// Create a consumer with string deserializers
+const consumer = new Consumer({
+  groupId: 'inventory-group',
+  clientId: 'inventory-processor',
+  bootstrapBrokers: ['localhost:9092'],
+  deserializers: stringDeserializers
 });
 
-// Configure consumer group identity
-const consumer = kafka.consumer({ groupId: 'inventory-group' });
-
 async function startConsumer() {
-  await consumer.connect();
-  
-  // Subscribe to the desired topic from the beginning if no offsets committed yet
-  await consumer.subscribe({ topic: 'orders-topic', fromBeginning: true });
-  console.log('Consumer connected & subscribed to orders-topic');
-
-  await consumer.run({
-    eachMessage: async ({ topic, partition, message }) => {
-      const key = message.key?.toString();
-      const value = message.value?.toString();
-      
-      console.log(`[Partition ${partition}] Processing event: Key=${key}`);
-      
-      if (value) {
-        const orderData = JSON.parse(value);
-        // Execute business logic (e.g. reserving inventory)
-        console.log(`Reserved inventory for order details:`, orderData);
-      }
-    }
+  // Create a consumer stream
+  const stream = await consumer.consume({
+    autocommit: true,
+    topics: ['orders-topic'],
+    sessionTimeout: 10000,
+    heartbeatInterval: 500
   });
+
+  console.log('Consumer stream created successfully');
+
+  // Option 1: Event-based consumption (push model)
+  // stream.on('data', message => {
+  //   console.log(`Received (Event): ${message.key} -> ${message.value}`);
+  //   if (message.value) {
+  //     const orderData = JSON.parse(message.value);
+  //     console.log('Processed order (Event):', orderData.orderId);
+  //   }
+  // });
+
+  // Option 2: Async iterator consumption (sequential pull model)
+  // for await (const message of stream) {
+  //   console.log(`Received (Iterator): ${message.key} -> ${message.value}`);
+  //   if (message.value) {
+  //     const orderData = JSON.parse(message.value);
+  //     // Process message...
+  //   }
+  // }
+
+  // Option 3: Concurrent processing (using hwp's high-performance worker pool)
+  try {
+    await forEach(
+      stream,
+      async message => {
+        console.log(`Received (Concurrent): ${message.key} -> ${message.value}`);
+        if (message.value) {
+          const orderData = JSON.parse(message.value);
+          // Process order concurrently with a set concurrency level
+          console.log(`Reserved inventory for order: ${orderData.orderId}`);
+        }
+      },
+      16 // 16 is the concurrency level
+    );
+  } catch (error) {
+    console.error('Stream processing error:', error);
+  } finally {
+    // Close the consumer when done or on application shutdown
+    await consumer.close();
+  }
 }
 
 startConsumer().catch(console.error);

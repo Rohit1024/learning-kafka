@@ -121,6 +121,126 @@ public class OrderEventConsumer {
 
 ---
 
+## 4. Java Serialization & Deserialization with Jackson 3
+In Java Kafka applications, serialization translates Java objects into byte arrays for transmission, while deserialization reconstructs the original Java objects from byte arrays. 
+
+Jackson 3.x modernizes this workflow with several key changes:
+1. **Namespace Shift**: Core packages have moved from `com.fasterxml.jackson.*` to `tools.jackson.*` (with the exception of annotations like `@JsonProperty` which remain in `com.fasterxml.jackson.annotation` for backward compatibility).
+2. **Immutable Builder API**: The mutable `ObjectMapper` is replaced by the immutable, thread-safe `JsonMapper`, created via a builder pattern.
+3. **Unchecked Exceptions**: Methods like `readValue` and `writeValueAsString` now throw unchecked runtime exceptions, eliminating checked exception boilerplate.
+
+### Manual Jackson 3 Serialization & Deserialization
+If you want to manually serialize objects to a JSON string or byte array before sending them as a string/byte payload, use the following pattern:
+
+```java
+import tools.jackson.databind.json.JsonMapper;
+import com.example.dto.OrderEvent;
+
+public class SerializationHelper {
+    // Instantiate a thread-safe, immutable JsonMapper using the builder
+    private static final JsonMapper mapper = JsonMapper.builder().build();
+
+    public static byte[] serializeEvent(OrderEvent event) {
+        // writeValueAsBytes throws unchecked RuntimeException in Jackson 3
+        return mapper.writeValueAsBytes(event);
+    }
+
+    public static OrderEvent deserializeEvent(byte[] bytes) {
+        // readValue throws unchecked RuntimeException in Jackson 3
+        return mapper.readValue(bytes, OrderEvent.class);
+    }
+}
+```
+
+### Custom Jackson 3 Serializer & Deserializer Classes
+To register Jackson 3 directly with your Apache Kafka Producer/Consumer configuration, you can implement Kafka's `Serializer` and `Deserializer` interfaces:
+
+```java
+package com.example.serialization;
+
+import tools.jackson.databind.json.JsonMapper;
+import org.apache.kafka.common.serialization.Serializer;
+import java.util.Map;
+
+public class Jackson3Serializer<T> implements Serializer<T> {
+    private final JsonMapper mapper = JsonMapper.builder().build();
+
+    @Override
+    public void configure(Map<String, ?> configs, boolean isKey) {}
+
+    @Override
+    public byte[] serialize(String topic, T data) {
+        if (data == null) {
+            return null;
+        }
+        return mapper.writeValueAsBytes(data); // Unchecked exception
+    }
+
+    @Override
+    public void close() {}
+}
+```
+
+```java
+package com.example.serialization;
+
+import tools.jackson.databind.json.JsonMapper;
+import org.apache.kafka.common.serialization.Deserializer;
+import java.util.Map;
+
+public class Jackson3Deserializer<T> implements Deserializer<T> {
+    private final JsonMapper mapper = JsonMapper.builder().build();
+    private Class<T> targetType;
+
+    public Jackson3Deserializer() {}
+
+    public Jackson3Deserializer(Class<T> targetType) {
+        this.targetType = targetType;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void configure(Map<String, ?> configs, boolean isKey) {
+        String typeConfig = isKey ? "key.deserializer.type" : "value.deserializer.type";
+        if (configs.containsKey(typeConfig)) {
+            try {
+                this.targetType = (Class<T>) Class.forName((String) configs.get(typeConfig));
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException("Could not configure target class type", e);
+            }
+        }
+    }
+
+    @Override
+    public T deserialize(String topic, byte[] data) {
+        if (data == null) {
+            return null;
+        }
+        if (targetType == null) {
+            throw new IllegalStateException("Target type class is not configured for deserializer.");
+        }
+        return mapper.readValue(data, targetType); // Unchecked exception
+    }
+
+    @Override
+    public void close() {}
+}
+```
+
+You can then reference these custom classes in your `application.yml` or Kafka properties:
+```yaml
+spring:
+  kafka:
+    producer:
+      value-serializer: com.example.serialization.Jackson3Serializer
+    consumer:
+      value-deserializer: com.example.serialization.Jackson3Deserializer
+      properties:
+        value.deserializer.type: com.example.dto.OrderEvent
+```
+
+---
+
 ## Knowledge Check: Manual Commit Safety
 Why is setting `enable-auto-commit: false` preferred for production consumer services?
 

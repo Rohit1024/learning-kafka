@@ -80,6 +80,77 @@ public class OrderConsumer {
 }
 ```
 
+### Java Serialization & Deserialization with Jackson 3
+Jackson 3 relies on the `tools.jackson.databind.json.JsonMapper` package (instead of `com.fasterxml.jackson.databind.ObjectMapper`) and features unchecked runtime exceptions.
+
+#### Manual Serialization & Deserialization
+```java
+import tools.jackson.databind.json.JsonMapper;
+
+public class Jackson3Helper {
+    private static final JsonMapper mapper = JsonMapper.builder().build();
+
+    public static byte[] serialize(Object value) {
+        return mapper.writeValueAsBytes(value); // throws unchecked RuntimeException
+    }
+
+    public static <T> T deserialize(byte[] src, Class<T> valueType) {
+        return mapper.readValue(src, valueType); // throws unchecked RuntimeException
+    }
+}
+```
+
+#### Custom Kafka Serializer & Deserializer
+```java
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.serialization.Deserializer;
+import tools.jackson.databind.json.JsonMapper;
+import java.util.Map;
+
+// Custom Serializer
+public class Jackson3Serializer<T> implements Serializer<T> {
+    private final JsonMapper mapper = JsonMapper.builder().build();
+
+    @Override public void configure(Map<String, ?> configs, boolean isKey) {}
+    @Override public void close() {}
+
+    @Override
+    public byte[] serialize(String topic, T data) {
+        return data == null ? null : mapper.writeValueAsBytes(data);
+    }
+}
+
+// Custom Deserializer
+public class Jackson3Deserializer<T> implements Deserializer<T> {
+    private final JsonMapper mapper = JsonMapper.builder().build();
+    private Class<T> targetType;
+
+    public Jackson3Deserializer() {}
+    public Jackson3Deserializer(Class<T> targetType) { this.targetType = targetType; }
+
+    @Override public void close() {}
+    @SuppressWarnings("unchecked")
+    @Override
+    public void configure(Map<String, ?> configs, boolean isKey) {
+        String typeConfig = isKey ? "key.deserializer.type" : "value.deserializer.type";
+        if (configs.containsKey(typeConfig)) {
+            try {
+                this.targetType = (Class<T>) Class.forName((String) configs.get(typeConfig));
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    @Override
+    public T deserialize(String topic, byte[] data) {
+        if (data == null) return null;
+        if (targetType == null) throw new IllegalStateException("Target type class is not configured.");
+        return mapper.readValue(data, targetType);
+    }
+}
+```
+
 ---
 
 ## 2. TypeScript Implementation (`@platformatic/kafka`)
@@ -88,55 +159,76 @@ The `@platformatic/kafka` library provides clean, fast Kafka client support for 
 
 ### Producer Example
 ```typescript
-import { Kafka } from '@platformatic/kafka'
+import { Producer, stringSerializers } from '@platformatic/kafka'
 
-const kafka = new Kafka({
-  brokers: ['localhost:9092'],
-  clientId: 'order-service-ts'
+const producer = new Producer({
+  clientId: 'order-service-ts',
+  bootstrapBrokers: ['localhost:9092'],
+  serializers: stringSerializers
 })
 
-const producer = kafka.producer()
-
 async function publishOrder(orderId: string, payload: object) {
-  await producer.connect()
-  await producer.send({
-    topic: 'orders',
-    messages: [
-      {
-        key: orderId,
-        value: JSON.stringify(payload)
-      }
-    ]
-  })
-  console.log(`Published order: ${orderId}`)
+  try {
+    await producer.send({
+      topic: 'orders',
+      messages: [
+        {
+          key: orderId,
+          value: JSON.stringify(payload)
+        }
+      ]
+    })
+    console.log(`Published order: ${orderId}`)
+  } finally {
+    // Close to release resources
+    await producer.close()
+  }
 }
 ```
 
 ### Consumer Example
 ```typescript
-import { Kafka } from '@platformatic/kafka'
+import { Consumer, stringDeserializers } from '@platformatic/kafka'
+import { forEach } from 'hwp'
 
-const kafka = new Kafka({
-  brokers: ['localhost:9092'],
-  clientId: 'order-processing-ts'
+const consumer = new Consumer({
+  groupId: 'order-group-ts',
+  clientId: 'order-processing-ts',
+  bootstrapBrokers: ['localhost:9092'],
+  deserializers: stringDeserializers
 })
 
-const consumer = kafka.consumer({ groupId: 'order-group-ts' })
-
 async function startConsumer() {
-  await consumer.connect()
-  await consumer.subscribe({ topic: 'orders', fromBeginning: true })
-
-  await consumer.run({
-    eachMessage: async ({ topic, partition, message }) => {
-      const key = message.key?.toString()
-      const value = message.value?.toString()
-      
-      console.log(`Received message on partition ${partition}: Key=${key}, Value=${value}`)
-      
-      // Perform business actions here...
-    }
+  const stream = await consumer.consume({
+    autocommit: true,
+    topics: ['orders'],
+    sessionTimeout: 10000,
+    heartbeatInterval: 500
   })
+
+  // Option 1: Event-based consumption (push model)
+  // stream.on('data', message => {
+  //   console.log(`Received: ${message.key} -> ${message.value}`)
+  // })
+
+  // Option 2: Async iterator consumption (sequential pull model)
+  // for await (const message of stream) {
+  //   console.log(`Received: ${message.key} -> ${message.value}`)
+  // }
+
+  // Option 3: Concurrent processing (concurrency level 16)
+  try {
+    await forEach(
+      stream,
+      async message => {
+        console.log(`Received: ${message.key} -> ${message.value}`)
+        // Process message...
+      },
+      16
+    )
+  } finally {
+    await consumer.close()
+  }
 }
 
 startConsumer().catch(console.error)
