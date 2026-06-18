@@ -2,14 +2,14 @@
 
 - **Date**: 2026-06-18
 - **Lessons Completed**:
-  - [Lesson 1: Kafka Basics & Architecture Patterns](file:///Users/rohitkharche/testing/learning-kafka/docs/lessons/0001-kafka-basics-and-patterns.md)
-  - [Lesson 2: Setting up Kafka (Local Cluster & Cloud)](file:///Users/rohitkharche/testing/learning-kafka/docs/lessons/0002-setting-up-kafka.md)
-  - [Lesson 3: Java Spring Boot Integration](file:///Users/rohitkharche/testing/learning-kafka/docs/lessons/0003-spring-boot-kafka.md)
-  - [Lesson 4: TypeScript with @platformatic/kafka](file:///Users/rohitkharche/testing/learning-kafka/docs/lessons/0004-typescript-kafka.md)
-  - [Lesson 5: Operations, Delivery Guarantees & Troubleshooting](file:///Users/rohitkharche/testing/learning-kafka/docs/lessons/0005-operations-and-troubleshooting.md)
+  - [Lesson 1: Kafka Basics & Architecture Patterns](../docs/lessons/0001-kafka-basics-and-patterns.md)
+  - [Lesson 2: Setting up Kafka (Local Cluster & Cloud)](../docs/lessons/0002-setting-up-kafka.md)
+  - [Lesson 3: Java Spring Boot Integration](../docs/lessons/0003-spring-boot-kafka.md)
+  - [Lesson 4: TypeScript with @platformatic/kafka](../docs/lessons/0004-typescript-kafka.md)
+  - [Lesson 5: Operations, Delivery Guarantees & Troubleshooting](../docs/lessons/0005-operations-and-troubleshooting.md)
 - **Reference Materials Created**:
-  - [Kafka Developer Reference Cheat Sheet](file:///Users/rohitkharche/testing/learning-kafka/docs/cheatsheet/kafka-developer-cheat-sheet.md)
-  - [Kafka Learning Glossary](file:///Users/rohitkharche/testing/learning-kafka/docs/references/glossary.md)
+  - [Kafka Developer Reference Cheat Sheet](../docs/cheatsheet/kafka-developer-cheat-sheet.md)
+  - [Kafka Learning Glossary](../docs/references/glossary.md)
 - **Previous Knowledge Status**: Starting from the very basics of distributed event streaming.
 
 ## Key Insights
