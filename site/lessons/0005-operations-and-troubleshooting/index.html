@@ -485,12 +485,13 @@
     subgraph partition_log ["Partition Log"]
         M1["Offset 100"] --&gt; M2["Offset 101"] --&gt; M3["Offset 102"] --&gt; M4["Offset 103 - Latest"]
     end
-    C["Consumer Group Offset: 100"]
-    style C fill:#f9f,stroke:#333,stroke-width:2px</code></pre>
-<p><strong>Remediation Strategy:</strong>
-1.  Check lag using CLI: <code>kafka-consumer-groups --describe</code>
-2.  Increase topic partition count (e.g. from 4 to 8).
-3.  Increase the count of consumer container instances (up to the partition count limit). Kafka cannot assign more than one consumer per partition inside a group!</p>
+    C["Consumer Group Offset: 100"]</code></pre>
+<p><strong>Remediation Strategy:</strong></p>
+<ol>
+<li>Check lag using CLI: <code>kafka-consumer-groups --describe</code></li>
+<li>Increase topic partition count (e.g. from 4 to 8).</li>
+<li>Increase the count of consumer container instances (up to the partition count limit). Kafka cannot assign more than one consumer per partition inside a group!</li>
+</ol>
 <hr />
 <h2 id="3-solving-rebalance-storms">3. Solving Rebalance Storms<a class="headerlink" href="#3-solving-rebalance-storms" title="Permanent link">&para;</a></h2>
 <p>A <strong>rebalance</strong> is the process where Kafka redistributes partitions among consumer group members. Rebalances halt all message consumption. A "rebalance storm" occurs when slow processing triggers a rebalance, which stops consumption, increases lag, causes other consumers to also timeout when they resume, triggering yet another rebalance!</p>
@@ -505,13 +506,18 @@
     Note over B: Consumer B gets A's partition. Stops to sync...
     A-&gt;&gt;C: Polling again, receives Kickout error!
     Note over A: Consumer A must reconnect. Triggers Rebalance 2!</code></pre>
-<p><strong>Mitigation Configs:</strong>
-*   <strong><code>max.poll.interval.ms</code></strong>: Increase this limit so slow consumers get more time to complete processing before being marked dead.
-*   <strong><code>max.poll.records</code></strong>: Decrease the number of records pulled in a single batch (e.g. from 500 to 50) to guarantee completion within the timeout interval.</p>
+<p><strong>Mitigation Configs:</strong></p>
+<ul>
+<li><strong><code>max.poll.interval.ms</code></strong>: Increase this limit so slow consumers get more time to complete processing before being marked dead.</li>
+<li><strong><code>max.poll.records</code></strong>: Decrease the number of records pulled in a single batch (e.g. from 500 to 50) to guarantee completion within the timeout interval.</li>
+</ul>
 <hr />
 <h2 id="4-handling-poison-pills-dead-letter-queues-dlq">4. Handling Poison Pills &amp; Dead Letter Queues (DLQ)<a class="headerlink" href="#4-handling-poison-pills-dead-letter-queues-dlq" title="Permanent link">&para;</a></h2>
 <p>A "poison pill" is a record published to a topic that cannot be deserialized by the consumer (e.g., plain text written to a JSON topic). Standard consumers crash, restart, and retry the same record forever, blocking the partition.</p>
-<p><strong>Spring Boot Remedy:</strong> Use Spring's <code>ErrorHandlingDeserializer</code>. It catches deserialization exceptions, wraps them in a metadata payload, and passes them to the listener where it can be automatically routed to a Dead Letter Topic (DLQ).</p>
+<p><strong>Spring Boot Remedy:</strong></p>
+<ul>
+<li>Use Spring's <code>ErrorHandlingDeserializer</code>. It catches deserialization exceptions, wraps them in a metadata payload, and passes them to the listener where it can be automatically routed to a Dead Letter Topic (DLQ).</li>
+</ul>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">spring</span><span class="p">:</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">kafka</span><span class="p">:</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">consumer</span><span class="p">:</span>
@@ -531,7 +537,7 @@
 <li><strong>0 containers will pull messages (Kafka blocks on over-provisioning)</strong>: No, Kafka does not block the group. It assigns 4 partitions to 4 consumers.</li>
 </ol>
 <hr />
-<p><a href=".././0004-typescript-kafka/">← Lesson 4: TypeScript with @platformatic/kafka</a> | <a href="../../">Home →</a></p>
+<p><a href=".././0004-typescript-kafka/">← Lesson 4: TypeScript with @platformatic/kafka</a> | <a href=".././0006-spring-kafka-streams/">Lesson 6: Spring for Apache Kafka Streams →</a></p>
 
 
 

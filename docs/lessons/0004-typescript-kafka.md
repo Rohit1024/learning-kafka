@@ -1,14 +1,21 @@
 # Lesson 4: TypeScript with @platformatic/kafka
 
+**🎯 What you will learn:**
+* How to set up a high-performance Node.js Kafka client using `@platformatic/kafka`.
+* Dispatching messages with partition keys to guarantee ordering.
+* Consuming messages as continuous Node.js streams.
+* Utilizing `hwp` for concurrent stream processing without blocking the event loop.
+
 ## Overview
 Node.js is highly suited for event-driven systems due to its non-blocking I/O event loop. The `@platformatic/kafka` library provides a high-performance, type-safe, developer-friendly interface to build Kafka clients. In this lesson, we will set up a TypeScript producer and consumer.
 
 ```mermaid
 graph TD
     subgraph ts_client ["Node.js Engine"]
-        P[TypeScript Code] --> C[Platformatic Kafka Client]
+        P[TypeScript Application] -->|Stream Methods| C[Platformatic Kafka Client]
+        C -->|Async Worker Pool 'hwp'| WP[Concurrent Processing]
     end
-    C -->|Persistent TCP Conn| KB[Kafka Broker Node]
+    C -->|Persistent TCP Conn| KB[(Kafka Broker)]
 ```
 
 ---
@@ -144,6 +151,22 @@ async function startConsumer() {
 
 startConsumer().catch(console.error);
 ```
+
+---
+
+## Gotchas and Best Practices
+
+### 1. Memory Leaks in Streams
+**Gotcha:** If you consume using Node.js streams but your processing logic is slower than the ingestion rate, messages will buffer in memory until the Node.js process crashes with an OOM (Out of Memory) error.
+**Fix:** Always use backpressure-aware patterns. The `hwp` library handles this automatically by pausing the underlying stream when the concurrency limit is reached.
+
+### 2. Unhandled Promise Rejections in Worker Pools
+**Gotcha:** Throwing an unhandled exception inside your stream's `forEach` or async iterator will cause the Node process to crash entirely or silently drop the consumer thread.
+**Fix:** Wrap your processing logic in `try-catch` blocks. Send failed messages to a Dead Letter Queue (DLQ) rather than allowing them to crash the stream processor.
+
+### 3. Graceful Shutdown
+**Gotcha:** If the Node.js application is terminated (e.g., via SIGTERM in Kubernetes) and the consumer isn't cleanly closed, Kafka will wait for the `session.timeout.ms` before rebalancing, causing processing delays.
+**Fix:** Trap termination signals (`SIGINT`, `SIGTERM`) and call `await consumer.close()` before exiting the process.
 
 ---
 

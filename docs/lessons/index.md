@@ -21,3 +21,12 @@ Follow these lessons to systematically master Apache Kafka. Each lesson covers a
     *   Managing and reducing consumer lag.
     *   Preventing rebalance storms (`max.poll.interval.ms`).
     *   Handling deserialization poison pills via Dead Letter Queues (DLQ).
+6.  **[Lesson 6: Spring for Apache Kafka Streams](0006-spring-kafka-streams.md)**
+    *   Kafka Streams setup, `StreamsBuilder`, building a processing Topology.
+    *   Gotchas: SerDes mismatch, co-partitioning constraints.
+7.  **[Lesson 7: Spring Cloud Stream](0007-spring-cloud-stream.md)**
+    *   Destination Binders and functional programming model.
+    *   Gotchas: Legacy annotations and error handling.
+8.  **[Lesson 8: Spring Cloud Bus](0008-spring-cloud-bus.md)**
+    *   Broadcasting control-plane management tasks and config refreshes.
+    *   Gotchas: Using proper destinations and avoiding data transfer.

@@ -437,6 +437,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#gotchas-and-best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Gotchas and Best Practices
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Gotchas and Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-memory-leaks-in-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Memory Leaks in Streams
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-unhandled-promise-rejections-in-worker-pools" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. Unhandled Promise Rejections in Worker Pools
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-graceful-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Graceful Shutdown
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#knowledge-check-keys-in-kafka" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -471,13 +521,19 @@
                   
 
 <h1 id="lesson-4-typescript-with-platformatickafka">Lesson 4: TypeScript with @platformatic/kafka<a class="headerlink" href="#lesson-4-typescript-with-platformatickafka" title="Permanent link">&para;</a></h1>
+<p><strong>🎯 What you will learn:</strong>
+* How to set up a high-performance Node.js Kafka client using <code>@platformatic/kafka</code>.
+* Dispatching messages with partition keys to guarantee ordering.
+* Consuming messages as continuous Node.js streams.
+* Utilizing <code>hwp</code> for concurrent stream processing without blocking the event loop.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p>Node.js is highly suited for event-driven systems due to its non-blocking I/O event loop. The <code>@platformatic/kafka</code> library provides a high-performance, type-safe, developer-friendly interface to build Kafka clients. In this lesson, we will set up a TypeScript producer and consumer.</p>
 <pre class="mermaid"><code>graph TD
     subgraph ts_client ["Node.js Engine"]
-        P[TypeScript Code] --&gt; C[Platformatic Kafka Client]
+        P[TypeScript Application] --&gt;|Stream Methods| C[Platformatic Kafka Client]
+        C --&gt;|Async Worker Pool 'hwp'| WP[Concurrent Processing]
     end
-    C --&gt;|Persistent TCP Conn| KB[Kafka Broker Node]</code></pre>
+    C --&gt;|Persistent TCP Conn| KB[(Kafka Broker)]</code></pre>
 <hr />
 <h2 id="1-installation-initialization">1. Installation &amp; Initialization<a class="headerlink" href="#1-installation-initialization" title="Permanent link">&para;</a></h2>
 <p>To begin, initialize a Node project, install TypeScript, the platformatic library, and the high-performance concurrent work-pool utility <code>hwp</code> (for concurrent processing):</p>
@@ -599,6 +655,17 @@
 </span><span id="__span-2-62"><a id="__codelineno-2-62" name="__codelineno-2-62" href="#__codelineno-2-62"></a>
 </span><span id="__span-2-63"><a id="__codelineno-2-63" name="__codelineno-2-63" href="#__codelineno-2-63"></a><span class="nx">startConsumer</span><span class="p">().</span><span class="k">catch</span><span class="p">(</span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">);</span>
 </span></code></pre></div>
+<hr />
+<h2 id="gotchas-and-best-practices">Gotchas and Best Practices<a class="headerlink" href="#gotchas-and-best-practices" title="Permanent link">&para;</a></h2>
+<h3 id="1-memory-leaks-in-streams">1. Memory Leaks in Streams<a class="headerlink" href="#1-memory-leaks-in-streams" title="Permanent link">&para;</a></h3>
+<p><strong>Gotcha:</strong> If you consume using Node.js streams but your processing logic is slower than the ingestion rate, messages will buffer in memory until the Node.js process crashes with an OOM (Out of Memory) error.
+<strong>Fix:</strong> Always use backpressure-aware patterns. The <code>hwp</code> library handles this automatically by pausing the underlying stream when the concurrency limit is reached.</p>
+<h3 id="2-unhandled-promise-rejections-in-worker-pools">2. Unhandled Promise Rejections in Worker Pools<a class="headerlink" href="#2-unhandled-promise-rejections-in-worker-pools" title="Permanent link">&para;</a></h3>
+<p><strong>Gotcha:</strong> Throwing an unhandled exception inside your stream's <code>forEach</code> or async iterator will cause the Node process to crash entirely or silently drop the consumer thread.
+<strong>Fix:</strong> Wrap your processing logic in <code>try-catch</code> blocks. Send failed messages to a Dead Letter Queue (DLQ) rather than allowing them to crash the stream processor.</p>
+<h3 id="3-graceful-shutdown">3. Graceful Shutdown<a class="headerlink" href="#3-graceful-shutdown" title="Permanent link">&para;</a></h3>
+<p><strong>Gotcha:</strong> If the Node.js application is terminated (e.g., via SIGTERM in Kubernetes) and the consumer isn't cleanly closed, Kafka will wait for the <code>session.timeout.ms</code> before rebalancing, causing processing delays.
+<strong>Fix:</strong> Trap termination signals (<code>SIGINT</code>, <code>SIGTERM</code>) and call <code>await consumer.close()</code> before exiting the process.</p>
 <hr />
 <h2 id="knowledge-check-keys-in-kafka">Knowledge Check: Keys in Kafka<a class="headerlink" href="#knowledge-check-keys-in-kafka" title="Permanent link">&para;</a></h2>
 <p>What is the effect of providing a consistent "key" (like orderId) when publishing events in Node/TypeScript?</p>
